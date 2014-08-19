@@ -1,7 +1,7 @@
 package memory
 
 import (
-	"github.com/Clever/leakybucket"
+	"github.com/bububa/leakybucket"
 	"testing"
 )
 

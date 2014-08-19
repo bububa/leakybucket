@@ -1,7 +1,7 @@
 package redis
 
 import (
-	"github.com/Clever/leakybucket"
+	"github.com/bububa/leakybucket"
 	"os"
 	"sync"
 	"testing"

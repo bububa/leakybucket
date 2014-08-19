@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-PKG = github.com/Clever/leakybucket
+PKG = github.com/bububa/leakybucket
 SUBPKGSREL = memory redis
 SUBPKGS = $(addprefix $(PKG)/,$(SUBPKGSREL))
 PKGS = $(PKG) $(SUBPKGS)
