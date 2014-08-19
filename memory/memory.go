@@ -10,6 +10,7 @@ type bucket struct {
 	remaining uint
 	reset     time.Time
 	rate      time.Duration
+	updated   time.Time
 }
 
 func (b *bucket) Capacity() uint {
@@ -28,9 +29,26 @@ func (b *bucket) Reset() time.Time {
 
 // Add to the bucket.
 func (b *bucket) Add(amount uint) (leakybucket.BucketState, error) {
+	b.updated = time.Now()
 	if time.Now().After(b.reset) {
 		b.reset = time.Now().Add(b.rate)
 		b.remaining = b.capacity
+	}
+	if amount > b.remaining {
+		return leakybucket.BucketState{b.capacity, b.remaining, b.reset}, leakybucket.ErrorFull
+	}
+	b.remaining -= amount
+	return leakybucket.BucketState{b.capacity, b.remaining, b.reset}, nil
+}
+
+func (b *bucket) AddWithTime(amount uint, t time.Time) (leakybucket.BucketState, error) {
+	b.updated = time.Now()
+	if t.After(b.reset) {
+		b.reset = t.Add(b.rate)
+		b.remaining = b.capacity
+	}
+	if t.Before(b.reset.Add(-1 * b.rate)) {
+		b.reset = t.Add(b.rate)
 	}
 	if amount > b.remaining {
 		return leakybucket.BucketState{b.capacity, b.remaining, b.reset}, leakybucket.ErrorFull
@@ -62,7 +80,16 @@ func (s *Storage) Create(name string, capacity uint, rate time.Duration) (leakyb
 		remaining: capacity,
 		reset:     time.Now().Add(rate),
 		rate:      rate,
+		updated:   time.Now(),
 	}
 	s.buckets[name] = b
 	return b, nil
+}
+
+func (s *Storage) Clean(name string) {
+	for name, b := range s.buckets {
+		if b.updated.Before(time.Now().Add(-1 * time.Hour)) {
+			delete(s.buckets, name)
+		}
+	}
 }

@@ -23,6 +23,8 @@ type Bucket interface {
 
 	// Add to the bucket. Returns bucket state after adding.
 	Add(uint) (BucketState, error)
+
+	AddWithTime(uint, time.Time) (BucketState, error)
 }
 
 // BucketState is a snapshot of a bucket's properties.

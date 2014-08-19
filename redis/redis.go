@@ -59,6 +59,22 @@ func (b *bucket) updateOldReset() error {
 	return nil
 }
 
+func (b *bucket) updateOldResetWithTime(t time.Time) error {
+	if b.reset.Unix() > t.Unix() {
+		return nil
+	}
+
+	conn := b.pool.Get()
+	defer conn.Close()
+
+	ttl, err := conn.Do("PTTL", b.name)
+	if err != nil {
+		return err
+	}
+	b.reset = t.Add(time.Duration(ttl.(int64) * millisecond))
+	return nil
+}
+
 // Add to the bucket.
 func (b *bucket) Add(amount uint) (leakybucket.BucketState, error) {
 	conn := b.pool.Get()
@@ -92,6 +108,43 @@ func (b *bucket) Add(amount uint) (leakybucket.BucketState, error) {
 	}
 
 	b.updateOldReset()
+
+	// Ensure we can't overflow
+	b.remaining = b.capacity - min(uint(count.(int64)), b.capacity)
+	return b.State(), nil
+}
+
+func (b *bucket) AddWithTime(amount uint, t time.Time) (leakybucket.BucketState, error) {
+	conn := b.pool.Get()
+	defer conn.Close()
+	if count, err := conn.Do("GET", b.name); err != nil {
+		return b.State(), err
+	} else if count == nil {
+		b.remaining = b.capacity
+	} else if num, err := byteArrayToUint(count.([]uint8)); err != nil {
+		return b.State(), err
+	} else {
+		b.remaining = b.capacity - min(uint(num), b.capacity)
+	}
+
+	if amount > b.remaining {
+		b.updateOldResetWithTime(t)
+		return b.State(), leakybucket.ErrorFull
+	}
+
+	// Go y u no have Milliseconds method? Why only Seconds and Nanoseconds?
+	expiry := int(b.rate.Nanoseconds() / millisecond)
+
+	count, err := conn.Do("INCRBY", b.name, amount)
+	if err != nil {
+		return b.State(), err
+	} else if uint(count.(int64)) == amount {
+		if _, err := conn.Do("PEXPIRE", b.name, expiry); err != nil {
+			return b.State(), err
+		}
+	}
+
+	b.updateOldResetWithTime(t)
 
 	// Ensure we can't overflow
 	b.remaining = b.capacity - min(uint(count.(int64)), b.capacity)
